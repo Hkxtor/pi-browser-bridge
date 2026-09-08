@@ -1,0 +1,86 @@
+{
+  "$schema": "https://aka.ms/codetour-schema",
+  "title": "New Joiner: Pi Browser Bridge（Chrome 扩展 + Pi Agent）",
+  "description": "新成员漫游路线：从 manifest 权限面 → SW 总控 → 三个 content scripts → popup → Pi 侧 TypeScript 扩展（工具注册/权限/传输），最后落到 onboarding 文档与下一步。",
+  "isPrimary": true,
+  "steps": [
+    {
+      "file": "manifest.json",
+      "line": 4,
+      "title": "扩展身份与版本",
+      "description": "Chrome MV3 扩展 \"Pi Browser Bridge\" v1.5.8。本仓库根目录即可直接以“加载已解压的扩展程序”方式安装，没有构建步骤；版本号发布前改这里即可。名称/描述经 `__MSG_*__` 走 `_locales/` 国际化（en、zh_CN）。"
+    },
+    {
+      "file": "manifest.json",
+      "line": 7,
+      "title": "权限面（安全边界）",
+      "description": "能力设计全部可由这几项解释：`debugger`→CDP 通道（console/network 抓取、文件上传、任意 evaluate 兜底）；`scripting`→首选注入通道；`tabs/tabGroups`→MCP 标签组；`nativeMessaging`→legacy 发现；`storage/alarms`→状态与 30s 保活。`host_permissions` 含 `<all_urls>`——行为约束靠代码里的 URL 黑名单与 Pi 侧权限层兜底，这是 review 的重点防线。"
+    },
+    {
+      "file": "manifest.json",
+      "line": 23,
+      "title": "Service Worker 入口",
+      "description": "MV3 后台是 `background.js` module SW：无窗口、可休眠，靠 `chrome.runtime.onStartup`/`onMessage`/`alarms` 唤醒。下一步直接进这个文件看它如何上线。"
+    },
+    {
+      "file": "manifest.json",
+      "line": 40,
+      "title": "Content Scripts 注册",
+      "description": "三个脚本在 `document_idle` 注入全部 http(s) 页面，各自注册 `__piBrowser*` 全局单例（可幂等防重）。它们组成了 SW 的“页面内执行体”：角色树、正文抽取/表单、视觉反馈。接下来逐一打开。"
+    },
+    {
+      "file": "background.js",
+      "line": 97,
+      "title": "SW 总控（bundle 产物）",
+      "description": "⚠️ 本文件是压缩 bundle（146KB → 97 行，大部分逻辑挤在本行）：`Ho` 冻结表映射 16 个工具 handler、`Object.freeze([16789,16799])` 中继端口、`Oa()` 启动序列、V2 握手/重连/、popup 消息桥。源码上游不在本仓库——理解协议请跳到 .pi/ 下的 TS；需要改行为时优先确认是否有未公开的上游源。"
+    },
+    {
+      "file": "content-scripts/accessibility-tree.js",
+      "line": 1,
+      "title": "角色树 + ref_N 句柄",
+      "description": "不依赖 CDP AX 域，直接走 DOM：tag/role → a11y role 映射表、`[ref_N] role \"name\"` 树形输出、`WeakRef` 存的元素句柄表。快照间元素重排即产生 `stale_element_ref`——这是有意设计：Pi 侧据此触发重新快照。"
+    },
+    {
+      "file": "content-scripts/page-bridge.js",
+      "line": 1,
+      "title": "正文抽取 + 表单副作用",
+      "description": "`getPageText`：article/main 等内容启发式选主体，截断 50k 字符；`fillForm`：用原生 setter + 派发 input/change 真实事件绕过 React 受控组件拦截；`searchElements`：打分排序的元素搜索；`prepareScreenshot`：截图前禁滚动。文件=单行 bundle。"
+    },
+    {
+      "file": "content-scripts/visual-indicator.js",
+      "line": 1,
+      "title": "视觉反馈（Shadow DOM 隔离）",
+      "description": "高亮框（绿色脉冲）、状态徽标(⏳/✅/❌)、停止按钮、自动化边框——全部塞进 `#pibrowser-shadow-container` + shadowRoot，`z-index: 2147483647`，与页面样式互不影响。`beforeunload` 时自清，避免幽灵残影。"
+    },
+    {
+      "file": "popup.html",
+      "line": 7,
+      "title": "Popup 设计系统",
+      "description": "332px 状态卡。`:root` 定义语义 token（--primary 绿、--error、阴影/圆角体系）。配合 `popup.js`（同为 bundle）的运行时 i18n switcher 与状态机：未连接→连接中→已连接，以及“Send this page” handoff 按钮与错误码→文案映射。"
+    },
+    {
+      "file": ".pi/extensions/pi-browser-agent/index.ts",
+      "line": 47,
+      "title": "Pi 工具注册（合同另一侧）",
+      "description": "`registerBrowserAgentTools` 把扩展能力暴露成 `browser_*` MCP 工具。可以看到两种结果信封：成功（summary+next 指引）与 warming 警告（等扩展连入）。新增浏览器能力的正确路径：先加这里的参数 schema（Type.Object）+ tools.ts handler，再谈 bundle。"
+    },
+    {
+      "file": ".pi/extensions/pi-browser-agent/policy.ts",
+      "line": 23,
+      "title": "权限判断：写操作的闸门",
+      "description": "`isSensitiveTarget` 用正则在目标名与值上双查（password/token/secret/api[-_ ]?key/authorization/cookie/credential），命中即 `require_confirm`/`deny`。上方 21 行的 SENSITIVE_PATTERN 是仓库里唯一一处敏感词表——改这里，不要散落判断。`redactValue` 保证入 audit 的不是明文。"
+    },
+    {
+      "file": ".pi/extensions/pi-browser-agent/local-relay-transport.ts",
+      "line": 46,
+      "title": "LocalRelayTransport 链路",
+      "description": "默认 transport：监听 `ws://127.0.0.1:16789/extension/v2` 等 Chrome 扩展自己连进来（异步、不阻塞 Pi；端口冲突报 port_unavailable），readyTimeoutMs 内没等到报 warming。所有 tool 调用经此转发到 SW `Ho` 表。配套单测 `local-relay-transport.test.ts` 覆盖握手/超时/断线。"
+    },
+    {
+      "file": ".pi/docs/pi-browser-agent/onboarding.md",
+      "line": 8,
+      "title": "下一步：文档与验证",
+      "description": "到此你已看过整条链路。建议顺序：① 读本目录 README.md（能力边界+权限模型+测试命令）；② 连不上时开 troubleshooting.md；③ 真机回归用 m3-live-test-runbook.md；④ 先跑 bun test 四个测试文件再改权限/传输层。"
+    }
+  ]
+}

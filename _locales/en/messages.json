@@ -1,0 +1,83 @@
+{
+  "extName": {
+    "message": "Pi Browser Bridge"
+  },
+  "extDescription": {
+    "message": "Connect your Chrome browser to Pi for AI-driven browser automation"
+  },
+  "popupTitle": {
+    "message": "Pi Browser Bridge"
+  },
+  "labelRelay": {
+    "message": "Pi Browser Bridge:"
+  },
+  "labelThisTab": {
+    "message": "This tab:"
+  },
+  "statusChecking": {
+    "message": "Checking..."
+  },
+  "statusConnected": {
+    "message": "Connected"
+  },
+  "statusDisconnected": {
+    "message": "Disconnected"
+  },
+  "statusNotConnected": {
+    "message": "Not connected"
+  },
+  "statusNoActiveTab": {
+    "message": "No active tab"
+  },
+  "statusRestrictedPage": {
+    "message": "Restricted page"
+  },
+  "statusExtensionError": {
+    "message": "Extension error"
+  },
+  "statusError": {
+    "message": "Error"
+  },
+  "btnLoading": {
+    "message": "Loading..."
+  },
+  "btnConnectTab": {
+    "message": "Connect This Tab"
+  },
+  "btnConnectShort": {
+    "message": "Connect"
+  },
+  "btnDisconnectTab": {
+    "message": "Disconnect This Tab"
+  },
+  "btnCannotConnect": {
+    "message": "Cannot connect"
+  },
+  "btnNoActiveTab": {
+    "message": "No Active Tab"
+  },
+  "btnExtensionError": {
+    "message": "Extension Error"
+  },
+  "btnError": {
+    "message": "Error"
+  },
+  "cardTitle": {
+    "message": "Connection status"
+  },
+  "cardSubtitle": {
+    "message": "Relay & current tab"
+  },
+  "connectedTabs": {
+    "message": "Connected tabs:"
+  },
+  "notLoggedIn": {
+    "message": "Not logged in"
+  },
+  "operationFailed": {
+    "message": "Operation failed"
+  },
+  "retryConnection": {
+    "message": "Retry connection"
+  }
+}

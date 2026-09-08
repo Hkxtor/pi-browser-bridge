@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    /* 扩展语义色 */
+    :root {
+      --text: #141414;
+      --text-secondary: #636261;
+      --text-tertiary: #838280;
+      --border: #E6E6E6;
+      --fill: #EFEFEF;
+      --fill-tertiary: #F9F9F9;
+      --bg: #FDFDFD;
+      --primary: #73CD94;
+      --primary-hover: #8EE5A1;
+      --primary-text: #FDFDFD;
+      /* 二级按钮 token */
+      --bg-highlight: #080807;
+      --bg-highlight-hover: #2a2a29;
+      --text-on-primary: #FDFDFD;
+      --success: #73CD94;
+      --error: #FF4D4F;
+      --error-bg: #FFF2F0;
+      --warning: #FAAD14;
+      --radius: 8px;
+      --radius-sm: 6px;
+      --radius-lg: 16px;
+      --shadow-card: 0 4px 6px -1px rgba(0, 0, 0, 0.06), 0 2px 4px -2px rgba(0, 0, 0, 0.04);
+      --shadow-card-primary: 0 10px 15px -3px rgba(115, 205, 148, 0.08), 0 4px 6px -4px rgba(115, 205, 148, 0.04);
+    }
+
+    /* 顶部品牌区域 */
+    .face-container {
+      position: relative;
+      width: 100%;
+      padding: 16px 92px 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .face-inner {
+      position: relative;
+      margin-left: 0;
+      width: 46px;
+      height: 46px;
+      overflow: hidden;
+      border-radius: 0;
+      transform: none;
+      transform-origin: left top;
+      flex-shrink: 0;
+    }
+
+    .face-caption-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text);
+      line-height: 20px;
+    }
+    .face-caption-desc {
+      display: none;
+    }
+    .face-inner img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      width: 332px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      padding: 0;
+      color: var(--text);
+      background: #ffffff;
+      font-size: 13px;
+      box-shadow: 0 10px 15px -3px rgba(15, 23, 42, 0.08), 0 4px 6px -4px rgba(15, 23, 42, 0.04);
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* 内部内容容器：不再额外套一层卡片，仅做布局 */
+    .status-card {
+      background: transparent;
+      border-radius: 0;
+      border: none;
+      box-shadow: none;
+      padding: 0;
+      margin: 0;
+      overflow: hidden;
+      border-top: 1px solid var(--border);
+    }
+    .card-header {
+      display: none;
+    }
+    .card-body {
+      padding: 12px 16px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .popup-section {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      min-width: 0;
+    }
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      min-height: 24px;
+    }
+    .section-title {
+      font-size: 12px;
+      line-height: 18px;
+      font-weight: 600;
+      color: var(--text-secondary);
+    }
+    .status-row {
+      display: grid;
+      grid-template-columns: 18px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      font-size: 13px;
+      border-radius: var(--radius-sm);
+      border: 1px solid transparent;
+      background: var(--fill-tertiary);
+      min-width: 0;
+    }
+    .status-row .refresh-btn,
+    .status-row .btn-inline {
+      justify-self: end;
+      margin-left: 0;
+    }
+    .tab-status-row {
+      grid-template-columns: 18px minmax(0, 1fr) auto auto;
+    }
+    .tab-status-row .status-title {
+      min-width: 0;
+      overflow: visible;
+      text-overflow: clip;
+    }
+    .tab-status-row .status-value {
+      max-width: 92px;
+    }
+    .status-row .value {
+      flex: 1;
+      text-align: right;
+      color: var(--text-secondary);
+      font-size: 12px;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .status-row .label {
+      font-size: 13px;
+      color: var(--text);
+      font-weight: 500;
+    }
+    /* 状态图标：空圈/对勾，参考 Remix Icon 视觉 */
+    .status-row .status-icon {
+      flex-shrink: 0;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .status-row .status-icon svg {
+      width: 12px;
+      height: 12px;
+      color: var(--border);
+      opacity: 0;
+      transition: color 0.15s ease-out, opacity 0.15s ease-out;
+    }
+    .status-row .status-icon.connected {
+      border-color: var(--success);
+    }
+    .status-row .status-icon.connected svg {
+      color: var(--success);
+      opacity: 1;
+    }
+    .refresh-btn {
+      cursor: pointer;
+      flex-shrink: 0;
+      border: none;
+      background: transparent;
+      color: var(--text-secondary);
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 6px;
+      border-radius: var(--radius-sm);
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .refresh-btn:hover {
+      color: var(--text);
+      background: var(--fill-tertiary);
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .refresh-btn.spinning svg {
+      animation: spin 1s linear infinite;
+    }
+    .status-text {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+    }
+    .status-value {
+      justify-self: end;
+      margin-left: 0;
+      max-width: 142px;
+      text-align: right;
+      font-size: 12px;
+      color: var(--text-secondary);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .status-title {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .status-desc {
+      font-size: 12px;
+      color: var(--text-secondary);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .status-desc:empty {
+      display: none;
+    }
+    .tab-label-wrap {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      min-width: 0;
+    }
+    .tab-help {
+      position: relative;
+      width: 14px;
+      height: 14px;
+      border-radius: 9999px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text-tertiary);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      line-height: 1;
+      font-weight: 600;
+      cursor: default;
+      padding: 0;
+      flex-shrink: 0;
+    }
+    .tab-help::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      top: calc(100% + 6px);
+      left: 50%;
+      z-index: 10;
+      width: max-content;
+      max-width: 220px;
+      padding: 6px 8px;
+      border-radius: 6px;
+      background: var(--bg-highlight);
+      color: var(--text-on-primary);
+      font-size: 11px;
+      line-height: 16px;
+      font-weight: 400;
+      text-align: left;
+      white-space: normal;
+      box-shadow: var(--shadow-card);
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transform: translate(-50%, -2px);
+      transition: opacity 80ms ease, transform 80ms ease, visibility 0s linear 80ms;
+    }
+    .tab-help:hover,
+    .tab-help:focus-visible {
+      color: var(--text);
+      border-color: var(--text-tertiary);
+    }
+    .tab-help:hover::after,
+    .tab-help:focus-visible::after {
+      opacity: 1;
+      visibility: visible;
+      transform: translate(-50%, 0);
+      transition-delay: 60ms, 60ms, 0s;
+    }
+    .relay-client-row {
+      grid-template-columns: 18px minmax(0, 1fr) auto;
+    }
+    .relay-client-empty-row {
+      grid-template-columns: 18px minmax(0, 1fr);
+    }
+    .relay-client-row .status-title {
+      white-space: normal;
+      overflow: visible;
+      text-overflow: clip;
+      line-height: 18px;
+    }
+    .relay-client-row .status-desc {
+      white-space: normal;
+      word-break: break-word;
+      line-height: 16px;
+    }
+    .relay-client-row .handoff-inline-btn {
+      min-width: 64px;
+      padding-left: 8px;
+      padding-right: 8px;
+    }
+    .handoff-feedback {
+      margin-top: -4px;
+      padding: 0 12px;
+      font-size: 12px;
+      line-height: 16px;
+      white-space: normal;
+      word-break: break-word;
+    }
+    .handoff-feedback.success {
+      color: #2f8f55;
+    }
+    .handoff-feedback.error {
+      color: var(--error);
+    }
+
+    .btn {
+      padding: 10px 14px;
+      border: none;
+      border-radius: var(--radius);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s, opacity 0.15s;
+    }
+    .btn-inline {
+      padding: 6px 10px;
+      font-size: 12px;
+      width: auto;
+      min-width: 0;
+      flex-shrink: 0;
+      white-space: nowrap;
+    }
+    /* 二级按钮：深色底 + 浅色字 */
+    .btn-secondary {
+      background: var(--bg-highlight);
+      color: var(--text-on-primary);
+    }
+    .btn-secondary:hover:not(:disabled) { background: var(--bg-highlight-hover); }
+    .btn-danger {
+      background: var(--error);
+      color: var(--text-on-primary);
+    }
+    /* 断开按钮 Hover 不变色 */
+    .btn-danger:hover:not(:disabled) { background: var(--error); }
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    /* 分隔线：参考 Separator */
+    .popup-separator {
+      height: 0;
+      border-top: 1px solid var(--border);
+      margin: 0;
+    }
+    /* 底部区域：展示版本更新 */
+    .popup-footer {
+      background: rgba(239, 239, 239, 0.6);
+      padding: 12px 16px 14px;
+      margin-top: auto;
+      border-top: 1px solid var(--border);
+      display: flex;
+      overflow: hidden;
+    }
+    .popup-footer-version {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      width: 100%;
+      font-size: 12px;
+      color: var(--text-secondary);
+      min-width: 0;
+    }
+    .popup-version-text {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .popup-update-btn {
+      border: none;
+      background: transparent;
+      color: var(--text);
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 500;
+      line-height: 16px;
+      padding: 2px 0;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .popup-update-btn:hover:not(:disabled) {
+      color: #2f8f55;
+    }
+    .popup-update-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .popup-footer-minimal {
+      padding: 10px 16px 12px;
+    }
+    .error-msg {
+      color: var(--error);
+      font-size: 12px;
+      margin-top: 8px;
+      padding: 8px 10px;
+      background: var(--error-bg);
+      border-radius: var(--radius-sm);
+      display: none;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .connected-label {
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin-bottom: 8px;
+      font-weight: 500;
+    }
+    .tab-list {
+      max-height: 140px;
+      overflow-y: auto;
+      border-radius: var(--radius-sm);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .tab-list::-webkit-scrollbar {
+      width: 6px;
+    }
+    .tab-list::-webkit-scrollbar-thumb {
+      background: var(--fill);
+      border-radius: 3px;
+    }
+    .tab-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      margin-bottom: 6px;
+      font-size: 13px;
+      border-radius: var(--radius-sm);
+      border: 1px solid transparent;
+      background: var(--fill-tertiary);
+      min-width: 0;
+    }
+    .tab-item .status-icon {
+      flex-shrink: 0;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .tab-item .status-icon svg {
+      width: 12px;
+      height: 12px;
+      color: var(--border);
+      opacity: 0;
+    }
+    .tab-item .status-icon.connected {
+      border-color: var(--success);
+    }
+    .tab-item .status-icon.connected svg {
+      color: var(--success);
+      opacity: 1;
+    }
+    .tab-item:last-child { margin-bottom: 0; }
+    .tab-item .dot {
+      width: 6px;
+      height: 6px;
+      flex-shrink: 0;
+      border-radius: 9999px;
+      background: var(--text-tertiary);
+    }
+    .tab-item .dot.green {
+      background: var(--success);
+    }
+    .tab-item .dot.yellow {
+      background: var(--warning);
+    }
+    .tab-item .title {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      flex: 1;
+      color: var(--text-secondary);
+    }
+    .tab-item-main {
+      min-width: 0;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .tab-item-value {
+      margin-left: auto;
+      max-width: 142px;
+      text-align: right;
+      font-size: 12px;
+      color: var(--text-secondary);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .tab-item-title {
+      font-size: 13px;
+      line-height: 18px;
+      font-weight: 500;
+      color: var(--text);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .tab-item-desc {
+      font-size: 12px;
+      line-height: 16px;
+      color: var(--text-secondary);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .popup-top-strip {
+      height: 4px;
+      background: #f5f5f5;
+      width: 100%;
+    }
+    /* 语言切换器：Tab 样式，浅色背景，定位到右上角 */
+    .lang-switcher {
+      position: absolute;
+      top: 12px;
+      right: 16px;
+      display: flex;
+      align-items: center;
+      background: var(--fill-tertiary);
+      border-radius: 6px;
+      padding: 2px;
+      gap: 2px;
+      flex-shrink: 0;
+    }
+    .lang-btn {
+      padding: 4px 10px;
+      font-size: 10px;
+      font-weight: 500;
+      border: none;
+      border-radius: 4px;
+      background: transparent;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.15s ease;
+      white-space: nowrap;
+      line-height: 1.5;
+    }
+    .lang-btn:hover {
+      color: var(--text);
+    }
+    .lang-btn.active {
+      background: #ffffff;
+      color: var(--text);
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    }
+  </style>
+</head>
+<body>
+  <div class="popup-top-strip"></div>
+  <div class="face-container">
+    <!-- 语言切换器（右上角） -->
+    <div class="lang-switcher" id="lang-switcher">
+      <button type="button" class="lang-btn" data-lang="zh" id="lang-zh">中文</button>
+      <button type="button" class="lang-btn" data-lang="en" id="lang-en">EN</button>
+    </div>
+    <div class="face-inner">
+      <img
+        src="pi-logo.png"
+        alt=""
+      />
+    </div>
+    <div class="face-caption-title" id="face-title"></div>
+    <div class="face-caption-desc" id="face-desc"></div>
+  </div>
+
+  <div class="status-card">
+    <div class="card-header">
+      <h2 class="card-title" id="card-title"></h2>
+      <p class="card-subtitle" id="card-subtitle"></p>
+    </div>
+    <div class="card-body">
+      <div class="popup-section">
+        <div class="status-row tab-status-row">
+          <div class="status-icon" id="tab-icon">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M9.9997 15.1709L19.1921 5.97852L20.6063 7.39273L9.9997 17.9993L3.63574 11.6354L5.04996 10.2212L9.9997 15.1709Z"></path>
+            </svg>
+          </div>
+          <div class="tab-label-wrap">
+            <div class="status-title" id="tab-label"></div>
+            <button type="button" class="tab-help" id="tab-help">?</button>
+          </div>
+          <div class="status-value" id="tab-status">-</div>
+          <button type="button" class="btn btn-secondary btn-inline" id="toggle-btn" disabled></button>
+        </div>
+      </div>
+
+      <div class="popup-section">
+        <div class="status-row identity-row">
+          <div class="status-icon connected" id="instance-icon">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M9.9997 15.1709L19.1921 5.97852L20.6063 7.39273L9.9997 17.9993L3.63574 11.6354L5.04996 10.2212L9.9997 15.1709Z"></path>
+            </svg>
+          </div>
+          <div class="status-title" id="instance-label"></div>
+          <div class="status-value" id="instance-status">-</div>
+        </div>
+      </div>
+
+      <div class="popup-section" id="relay-client-section">
+        <div class="tab-list" id="relay-client-list"></div>
+      </div>
+
+      <div id="connected-section" style="display:none">
+        <div class="connected-label" id="connected-tabs-label"></div>
+        <div class="tab-list" id="tab-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="popup-footer">
+    <div class="popup-footer-version">
+      <span class="popup-version-text" id="popup-version-text"></span>
+      <button type="button" class="popup-update-btn" id="popup-update-btn"></button>
+    </div>
+  </div>
+
+  <div class="error-msg" id="error-msg"></div>
+
+  <script type="module" src="popup.js"></script>
+</body>
+</html>
