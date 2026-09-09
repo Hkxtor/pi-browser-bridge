@@ -157,4 +157,4 @@ chrome-extension/
 
 ## 许可证
 
-暂无显式许可证，使用前请联系作者。
+[MIT](LICENSE)
