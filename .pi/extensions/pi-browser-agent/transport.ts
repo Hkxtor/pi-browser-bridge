@@ -94,6 +94,7 @@ export interface MockBrowserTransportOptions {
 	pageTreeText?: string;
 	computerResult?: string;
 	formInputResult?: string;
+	tabActivateResult?: BrowserToolResult;
 }
 
 export interface MockInvocation {
@@ -235,6 +236,9 @@ export class MockBrowserTransport implements BrowserTransport {
 	}
 
 	private fixtureFor(toolName: string): BrowserToolResult | null {
+		if (toolName === "tabs_activate" && this.options.tabActivateResult) {
+			return this.options.tabActivateResult;
+		}
 		if (toolName === "tabs.list" && this.options.tabs) {
 			return createSuccessResult("Mock tabs listed.", { tabs: this.options.tabs });
 		}

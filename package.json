@@ -1,6 +1,6 @@
 {
   "name": "pi-browser-bridge",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Pi browser bridge: browser_* tools that see and operate your Chrome via an MV3 extension + local WebSocket relay (127.0.0.1:16789).",
   "keywords": [
     "pi-package",

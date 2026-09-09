@@ -1,4 +1,5 @@
 import type { ActionAudit } from "./audit";
+import { legacyErrorToTransportError } from "./legacy-envelope";
 import {
 	decideWritePermission,
 	isSensitiveTarget,
@@ -45,13 +46,13 @@ function mcpText(evidence: unknown): string {
 /** tabs_context 返回文本："Open tabs (N):\n\n1. [280923130] \"Example Domain\" [ACTIVE]\n   https://example.com/" */
 function parseTabsContextText(textValue: string): BrowserTab[] {
 	const tabs: BrowserTab[] = [];
-	const pattern = /\[(\d+)\]\s*"([^"]*)"(?:\s*\[ACTIVE\])?\s*\r?\n\s*(\S+)/g;
-	for (const m of textValue.matchAll(pattern)) {
+	const pattern = /^\d+\.\s+\[(\d+)\]\s+"([\s\S]*?)"([ \t]+\[ACTIVE\])?(?:[ \t]+\(loading\))?\r?\n[ \t]+([^\r\n]*)/gm;
+	for (const match of textValue.matchAll(pattern)) {
 		tabs.push({
-			tabId: Number(m[1]),
-			title: m[2],
-			url: m[3],
-			active: /\[ACTIVE\]/.test(m[0]),
+			tabId: Number(match[1]),
+			title: match[2],
+			url: match[4],
+			active: match[3] !== undefined,
 		});
 	}
 	return tabs;
@@ -88,7 +89,7 @@ export async function handleBrowserTabsList(
 	_params: { tabId?: number } = {},
 	signal?: AbortSignal,
 ): Promise<BrowserToolResult> {
-	const result = await invokeRead(transport, "tabs_context", {}, context, signal);
+	const result = await invokeTransport(transport, "tabs_context", {}, context, signal);
 	const tabs = parseTabsContextText(mcpText(result.evidence));
 	const active = tabs.find((tab) => tab.active);
 
@@ -101,6 +102,53 @@ export async function handleBrowserTabsList(
 	);
 }
 
+export async function handleBrowserTabActivate(
+	transport: BrowserTransport,
+	context: BrowserRequestContext,
+	tabId: number,
+	signal?: AbortSignal,
+): Promise<BrowserToolResult> {
+	try {
+		const result = await invokeTransport(transport, "tabs_activate", { tabId }, context, signal);
+		const envelope = result.evidence as { isError?: unknown } | undefined;
+		const text = mcpText(result.evidence);
+		const payload = parseJsonObject(text);
+
+		if (envelope?.isError === true) {
+			const error = payload?.error as { code?: unknown; message?: unknown } | undefined;
+			throw legacyErrorToTransportError({
+				code: typeof error?.code === "string" ? error.code : undefined,
+				message: typeof error?.message === "string" ? error.message : text,
+			});
+		}
+
+		if (
+			!payload
+			|| !Number.isInteger(payload.tabId)
+			|| typeof payload.title !== "string"
+			|| typeof payload.url !== "string"
+			|| payload.active !== true
+		) {
+			throw new BrowserTransportError(
+				"invalid_transport_result",
+				"tabs_activate returned an invalid tab payload.",
+				true,
+				result.evidence,
+			);
+		}
+
+		const tab: BrowserTab = {
+			tabId: payload.tabId as number,
+			title: payload.title,
+			url: payload.url,
+			active: true,
+		};
+		return createSuccessResult(`Activated browser tab ${tab.tabId}.`, tab);
+	} catch (error) {
+		throw mapExtensionError(error);
+	}
+}
+
 export async function handleBrowserPageText(
 	transport: BrowserTransport,
 	context: BrowserRequestContext,
@@ -108,9 +156,10 @@ export async function handleBrowserPageText(
 	signal?: AbortSignal,
 ): Promise<BrowserToolResult> {
 	// 真实扩展只支持 max_chars（下划线命名）
-	const args = params.tabId !== undefined ? { tabId: params.tabId } : { tabId: -1 };
+	const tabId = resolveTabId(params, context);
+	const args = { tabId: tabId ?? -1 };
 	try {
-		const result = await invokeRead(transport, "get_page_text", args, context, signal);
+		const result = await invokeTransport(transport, "get_page_text", args, context, signal);
 		const text = mcpText(result.evidence);
 		const parsed = parsePageText(text);
 		const truncated = truncateText(parsed.body, params.maxChars ?? DEFAULT_TEXT_LIMIT);
@@ -139,9 +188,10 @@ export async function handleBrowserPageSnapshot(
 	params: TabScopedParams = {},
 	signal?: AbortSignal,
 ): Promise<BrowserToolResult> {
-	const args = params.tabId !== undefined ? { tabId: params.tabId } : { tabId: -1 };
+	const tabId = resolveTabId(params, context);
+	const args = { tabId: tabId ?? -1 };
 	try {
-		const result = await invokeRead(transport, "read_page", args, context, signal);
+		const result = await invokeTransport(transport, "read_page", args, context, signal);
 		const text = mcpText(result.evidence);
 		const refs = parseReadPageRefs(text);
 		const truncated = truncateText(text, params.maxChars ?? DEFAULT_TEXT_LIMIT);
@@ -167,9 +217,10 @@ export async function handleBrowserScreenshot(
 	params: { tabId?: number } = {},
 	signal?: AbortSignal,
 ): Promise<BrowserToolResult> {
-	const args = params.tabId !== undefined ? { action: "screenshot", tabId: params.tabId } : { action: "screenshot" };
+	const tabId = resolveTabId(params, context);
+	const args = tabId !== undefined ? { action: "screenshot", tabId } : { action: "screenshot" };
 	try {
-		const result = await invokeRead(transport, "computer", args, context, signal);
+		const result = await invokeTransport(transport, "computer", args, context, signal);
 		const text = mcpText(result.evidence);
 		const isBase64 = /^[A-Za-z0-9+/=\r\n]{100,}$/.test(text.trim().replace(/^data:[^;]+;base64,/, ""));
 		return createSuccessResult(
@@ -177,10 +228,13 @@ export async function handleBrowserScreenshot(
 			{ available: true, mimeType: undefined, rawTextPreview: text.slice(0, 200), isBase64 },
 		);
 	} catch (error) {
+		const mapped = mapExtensionError(error);
+		if (mapped.code === "tab_not_found") throw mapped;
 		throw new BrowserTransportError(
 			"screenshot_unavailable",
-			`Screenshot failed or is unavailable on this extension: ${(error as Error).message}`,
+			`Screenshot failed or is unavailable on this extension: ${mapped.message}`,
 			true,
+			mapped.details,
 		);
 	}
 }
@@ -244,18 +298,19 @@ async function runWrite(
 	signal?: AbortSignal,
 	confirmFn?: ConfirmFn,
 ): Promise<BrowserToolResult> {
+	const effectiveParams = { ...params, tabId: resolveTabId(params, context) };
 	const action = {
 		kind,
-		snapshotId: params.snapshotId,
-		ref: params.ref,
-		tabId: params.tabId,
-		url: params.url,
-		targetName: params.targetName,
-		value: params.text,
+		snapshotId: effectiveParams.snapshotId,
+		ref: effectiveParams.ref,
+		tabId: effectiveParams.tabId,
+		url: effectiveParams.url,
+		targetName: effectiveParams.targetName,
+		value: effectiveParams.text,
 	};
 	const decision = decideWritePermission(action, policy);
 	if (decision === "deny") {
-		audit.record(auditEntry(kind, params, "deny", "permission_denied"));
+		audit.record(auditEntry(kind, effectiveParams, "deny", "permission_denied"));
 		throw new BrowserTransportError(
 			"permission_denied",
 			`Write action "${kind}" is not permitted without a grant or UI confirmation.`,
@@ -263,9 +318,9 @@ async function runWrite(
 		);
 	}
 	if (decision === "require_confirm") {
-		const approved = confirmFn ? await confirmFn(confirmQuestion(kind, params)) : false;
+		const approved = confirmFn ? await confirmFn(confirmQuestion(kind, effectiveParams)) : false;
 		if (!approved) {
-			audit.record(auditEntry(kind, params, "require_confirm", "permission_denied"));
+			audit.record(auditEntry(kind, effectiveParams, "require_confirm", "permission_denied"));
 			throw new BrowserTransportError(
 				"permission_denied",
 				`Write action "${kind}" was not confirmed.`,
@@ -282,32 +337,32 @@ async function runWrite(
 		let args: Record<string, unknown>;
 		// snapshotId 归 Pi 内部调用记录用，不要放进 computer/form_input 的 arguments 里
 		// （真实扩展会报 "snapshotId is not supported" —— M2 发现，我们在开始修）
-		const base: Record<string, unknown> = { tabId: params.tabId };
+		const base: Record<string, unknown> = { tabId: effectiveParams.tabId };
 		if (kind === "click") {
 			// 真实 computer 无 "click"；用 left_click + ref（符合扩展文档: ref 是 coordinate 的替代）
 			toolName = "computer";
-			if (params.ref) {
-				args = { ...base, action: "left_click", ref: params.ref };
+			if (effectiveParams.ref) {
+				args = { ...base, action: "left_click", ref: effectiveParams.ref };
 			} else {
 				args = { ...base, action: "left_click" };
 			}
 		} else if (kind === "fill") {
 			toolName = "form_input";
-			args = { ...base, ref: params.ref, value: params.text };
+			args = { ...base, ref: effectiveParams.ref, value: effectiveParams.text };
 		} else {
 			toolName = "computer";
-			args = { ...base, action: "scroll_to", ref: params.ref };
+			args = { ...base, action: "scroll_to", ref: effectiveParams.ref };
 		}
 		const result = await transport.invoke(toolName, args, context, signal);
-		audit.record(auditEntry(kind, params, "allow", "success"));
+		audit.record(auditEntry(kind, effectiveParams, "allow", "success"));
 		return createSuccessResult(
-			`${kind} on ${params.ref} succeeded.`,
-			{ action: kind, ref: params.ref, snapshotId: params.snapshotId, transport: result.evidence },
+			`${kind} on ${effectiveParams.ref} succeeded.`,
+			{ action: kind, ref: effectiveParams.ref, snapshotId: effectiveParams.snapshotId, transport: result.evidence },
 			"Element refs expire on page change; refresh via read_page if the page changed.",
 		);
 	} catch (error) {
 		const code = error instanceof BrowserTransportError ? error.code : "internal_error";
-		audit.record(auditEntry(kind, params, "allow", code));
+		audit.record(auditEntry(kind, effectiveParams, "allow", code));
 		throw mapExtensionError(error);
 	}
 }
@@ -323,11 +378,30 @@ function auditEntry(
 		action: kind,
 		ref: params.ref,
 		snapshotId: params.snapshotId,
+		tabId: params.tabId,
 		decision,
 		result,
 		valueLength: params.text?.length,
 		redacted: sensitive || undefined,
 	};
+}
+
+function resolveTabId(
+	params: { tabId?: number },
+	context: BrowserRequestContext,
+): number | undefined {
+	return params.tabId ?? context.tabId;
+}
+
+function parseJsonObject(text: string): Record<string, unknown> | null {
+	try {
+		const parsed = JSON.parse(text);
+		return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+			? parsed as Record<string, unknown>
+			: null;
+	} catch {
+		return null;
+	}
 }
 
 function confirmQuestion(kind: WriteActionKind, params: ElementActionParams): string {
@@ -343,22 +417,22 @@ function confirmQuestion(kind: WriteActionKind, params: ElementActionParams): st
 /** 真实扩展会以字符串错误回传一些情况 —— 映射为内部稳定码 */
 function mapExtensionError(error: unknown): BrowserTransportError {
 	const message = error instanceof Error ? error.message : String(error);
-	const hint = error instanceof BrowserTransportError ? error.hint : undefined;
+	const details = error instanceof BrowserTransportError ? error.details : undefined;
 
 	if (/Unknown tool/i.test(message)) {
-		return new BrowserTransportError("tool_not_found", message, false, hint);
+		return new BrowserTransportError("tool_not_found", message, false, details);
 	}
 	if (/Invalid arguments/i.test(message)) {
-		return new BrowserTransportError("invalid_arguments", message, false, hint);
+		return new BrowserTransportError("invalid_arguments", message, false, details);
 	}
 	return error instanceof BrowserTransportError
 		? error
-		: new BrowserTransportError("internal_error", message, false, hint);
+		: new BrowserTransportError("internal_error", message, false, details);
 }
 
 // ---------- transport invoke helper --------------------------------
 
-async function invokeRead(
+async function invokeTransport(
 	transport: BrowserTransport,
 	tool: string,
 	arguments_: unknown,

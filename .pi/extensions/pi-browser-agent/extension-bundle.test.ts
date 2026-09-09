@@ -12,5 +12,15 @@ for (const relativePath of ["background.js"]) {
 			const source = readFileSync(resolve(REPOSITORY_ROOT, relativePath), "utf8");
 			expect(source).toContain(NATIVE_WATCH_DISCONNECT_HANDLER);
 		});
+
+		it("wires the readable tabs_activate module into discovery and invocation", () => {
+			const source = readFileSync(resolve(REPOSITORY_ROOT, relativePath), "utf8");
+			expect(source).toStartWith(
+				'import { handleTabsActivate, tabsActivateDefinition } from "./background-tab-activation.js";',
+			);
+			expect(source).toContain("const Un=[tabsActivateDefinition,");
+			expect(source).toContain("tabs_activate:handleTabsActivate");
+			expect(source).toContain("Ut=Un.map(Wn)");
+		});
 	});
 }

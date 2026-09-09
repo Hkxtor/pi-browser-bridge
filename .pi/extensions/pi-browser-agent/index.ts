@@ -19,6 +19,11 @@ import {
 	handleElementFill,
 	handleElementScroll,
 } from "./tools";
+import {
+	createBrowserTabTargetState,
+	registerBrowserTabCommand,
+} from "./tab-command";
+import type { BrowserTabTargetState } from "./tab-command";
 import type { BrowserTransport } from "./transport";
 import { UnconfiguredBrowserTransport } from "./transport";
 
@@ -44,8 +49,14 @@ const FillParameters = Type.Intersect([
 	Type.Object({ text: Type.String({ description: "Text to fill into the element." }) }),
 ]);
 
-export function registerBrowserAgentTools(pi: ExtensionAPI, transport: BrowserTransport): void {
+export function registerBrowserAgentTools(
+	pi: ExtensionAPI,
+	transport: BrowserTransport,
+	targetState: BrowserTabTargetState,
+): void {
 	const audit = new ActionAudit();
+	const contextFor = (toolCallId: string, ctx: SessionContext | undefined) =>
+		requestContext(toolCallId, ctx, targetState.get());
 
 	const sessionGranted = resolveSessionGrant();
 	const policyOf = (ctx: { hasUI?: boolean } | undefined) => ({
@@ -138,7 +149,7 @@ export function registerBrowserAgentTools(pi: ExtensionAPI, transport: BrowserTr
 			onUpdate?.({ content: [{ type: "text", text: "Listing browser tabs..." }] });
 			try {
 				return toPiToolResult(
-					await handleBrowserTabsList(transport, requestContext(toolCallId, ctx), {}, signal),
+					await handleBrowserTabsList(transport, contextFor(toolCallId, ctx), {}, signal),
 				);
 			} catch (error) {
 				throw toPiToolError(error);
@@ -158,7 +169,7 @@ export function registerBrowserAgentTools(pi: ExtensionAPI, transport: BrowserTr
 			onUpdate?.({ content: [{ type: "text", text: "Reading page text..." }] });
 			try {
 				return toPiToolResult(
-					await handleBrowserPageText(transport, requestContext(toolCallId, ctx), params, signal),
+					await handleBrowserPageText(transport, contextFor(toolCallId, ctx), params, signal),
 				);
 			} catch (error) {
 				throw toPiToolError(error);
@@ -178,7 +189,7 @@ export function registerBrowserAgentTools(pi: ExtensionAPI, transport: BrowserTr
 			onUpdate?.({ content: [{ type: "text", text: "Capturing page snapshot..." }] });
 			try {
 				return toPiToolResult(
-					await handleBrowserPageSnapshot(transport, requestContext(toolCallId, ctx), params, signal),
+					await handleBrowserPageSnapshot(transport, contextFor(toolCallId, ctx), params, signal),
 				);
 			} catch (error) {
 				throw toPiToolError(error);
@@ -198,7 +209,7 @@ export function registerBrowserAgentTools(pi: ExtensionAPI, transport: BrowserTr
 			onUpdate?.({ content: [{ type: "text", text: "Requesting screenshot..." }] });
 			try {
 				return toPiToolResult(
-					await handleBrowserScreenshot(transport, requestContext(toolCallId, ctx), params, signal),
+					await handleBrowserScreenshot(transport, contextFor(toolCallId, ctx), params, signal),
 				);
 			} catch (error) {
 				throw toPiToolError(error);
@@ -220,7 +231,7 @@ export function registerBrowserAgentTools(pi: ExtensionAPI, transport: BrowserTr
 				return toPiToolResult(
 					await handleElementClick(
 						transport,
-						requestContext(toolCallId, ctx),
+						contextFor(toolCallId, ctx),
 						params,
 						policyOf(ctx),
 						audit,
@@ -248,7 +259,7 @@ export function registerBrowserAgentTools(pi: ExtensionAPI, transport: BrowserTr
 				return toPiToolResult(
 					await handleElementFill(
 						transport,
-						requestContext(toolCallId, ctx),
+						contextFor(toolCallId, ctx),
 						params,
 						policyOf(ctx),
 						audit,
@@ -276,7 +287,7 @@ export function registerBrowserAgentTools(pi: ExtensionAPI, transport: BrowserTr
 				return toPiToolResult(
 					await handleElementScroll(
 						transport,
-						requestContext(toolCallId, ctx),
+						contextFor(toolCallId, ctx),
 						params,
 						policyOf(ctx),
 						audit,
@@ -291,6 +302,7 @@ export function registerBrowserAgentTools(pi: ExtensionAPI, transport: BrowserTr
 	});
 
 	pi.on("session_shutdown", async () => {
+		targetState.clear();
 		await transport.close();
 	});
 }
@@ -307,7 +319,9 @@ export default function (pi: ExtensionAPI): void {
 		transport = new UnconfiguredBrowserTransport();
 	}
 
-	registerBrowserAgentTools(pi, transport);
+	const targetState = createBrowserTabTargetState();
+	registerBrowserAgentTools(pi, transport, targetState);
+	registerBrowserTabCommand(pi, transport, targetState);
 
 	// 异步连接：不阻塞 Pi 启动；失败（端口被占等）仅反映到连接状态。
 	void transport.connect().catch(() => {
@@ -319,8 +333,16 @@ interface SessionContext {
 	sessionId?: string;
 }
 
-function requestContext(toolCallId: string, ctx: SessionContext | undefined) {
-	return createRequestContext({ requestId: toolCallId, sessionId: ctx?.sessionId ?? "unknown" });
+function requestContext(
+	toolCallId: string,
+	ctx: SessionContext | undefined,
+	tabId?: number,
+) {
+	return createRequestContext({
+		requestId: toolCallId,
+		sessionId: ctx?.sessionId ?? "unknown",
+		tabId,
+	});
 }
 
 function toPiToolResult(result: BrowserToolResult) {

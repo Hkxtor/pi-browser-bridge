@@ -3,6 +3,7 @@ import {
 	BrowserTransportError,
 	createErrorResult,
 	createRequestContext,
+	createSuccessResult,
 	truncateText,
 } from "./protocol";
 import { ActionAudit } from "./audit";
@@ -11,9 +12,11 @@ import {
 	handleBrowserPageSnapshot,
 	handleBrowserPageText,
 	handleBrowserScreenshot,
+	handleBrowserTabActivate,
 	handleBrowserTabsList,
 	handleElementClick,
 	handleElementFill,
+	handleElementScroll,
 } from "./tools";
 import { MockBrowserTransport, UnconfiguredBrowserTransport } from "./transport";
 
@@ -23,6 +26,7 @@ function connectedMock() {
 	return new MockBrowserTransport({
 		tools: [
 			{ name: "tabs_context", description: "tabs", inputSchema: { type: "object", properties: {}, additionalProperties: false }, risk: "read" },
+			{ name: "tabs_activate", description: "activate", inputSchema: { type: "object", properties: { tabId: { type: "integer" } }, required: ["tabId"], additionalProperties: false }, risk: "write" },
 			{ name: "get_page_text", description: "page text", inputSchema: { type: "object", properties: { tabId: { type: "number" } }, required: ["tabId"] }, risk: "read" },
 			{ name: "read_page", description: "accessibility", inputSchema: { type: "object", required: ["tabId"] }, risk: "read" },
 			{ name: "computer", description: "actions", inputSchema: { type: "object", required: ["action", "tabId"] }, risk: "write" },
@@ -62,6 +66,89 @@ describe("browser_tabs_list", () => {
 		const evidence = result.evidence as { tabs: { tabId: number; active: boolean }[] };
 		expect(evidence.tabs).toHaveLength(2);
 		expect(evidence.tabs.find((t) => t.active)?.tabId).toBe(280923130);
+	});
+
+	it("parses quoted, multiline, controlled, and long titles without sanitizing source data", async () => {
+		const transport = connectedMock();
+		const unusualTitle = `Quoted "title"\nnext\u001b[31m ${"x".repeat(200)}`;
+		transport.options.tabsContextText =
+			`Open tabs (1):\n\n1. [7] "${unusualTitle}" [ACTIVE]\n   https://example.com/path\u0007`;
+		await transport.connect();
+
+		const result = await handleBrowserTabsList(transport, request);
+		const tabs = (result.evidence as { tabs: Array<{ title: string; url: string }> }).tabs;
+
+		expect(tabs).toHaveLength(1);
+		expect(tabs[0].title).toBe(unusualTitle);
+		expect(tabs[0].url).toBe("https://example.com/path\u0007");
+	});
+});
+
+describe("browser tab activation", () => {
+	it("returns the activated tab from the MCP response", async () => {
+		const transport = connectedMock();
+		transport.options.tabActivateResult = createSuccessResult("activated", {
+			content: [{
+				type: "text",
+				text: JSON.stringify({ tabId: 22, title: "Docs", url: "https://docs.example/", active: true }),
+			}],
+		});
+		await transport.connect();
+
+		const result = await handleBrowserTabActivate(transport, request, 22);
+
+		expect(result.status).toBe("success");
+		expect(result.evidence).toEqual({
+			tabId: 22,
+			title: "Docs",
+			url: "https://docs.example/",
+			active: true,
+		});
+		expect(transport.invocations.at(-1)).toMatchObject({
+			toolName: "tabs_activate",
+			arguments: { tabId: 22 },
+		});
+	});
+
+	it("maps a TAB_NOT_FOUND MCP response to tab_not_found", async () => {
+		const transport = connectedMock();
+		transport.options.tabActivateResult = createSuccessResult("extension error", {
+			content: [{
+				type: "text",
+				text: JSON.stringify({ error: { code: "TAB_NOT_FOUND", message: "Tab closed." } }),
+			}],
+			isError: true,
+		});
+		await transport.connect();
+
+		const error = await handleBrowserTabActivate(transport, request, 22).catch((caught) => caught);
+
+		expect(error).toBeInstanceOf(BrowserTransportError);
+		expect(error.code).toBe("tab_not_found");
+	});
+
+	it("maps an unsupported extension tool to tool_not_found", async () => {
+		const transport = connectedMock();
+		transport.failures.tabs_activate = new Error("Unknown tool: tabs_activate") as BrowserTransportError;
+		await transport.connect();
+
+		const error = await handleBrowserTabActivate(transport, request, 22).catch((caught) => caught);
+
+		expect(error).toBeInstanceOf(BrowserTransportError);
+		expect(error.code).toBe("tool_not_found");
+	});
+
+	it("rejects malformed activation responses", async () => {
+		const transport = connectedMock();
+		transport.options.tabActivateResult = createSuccessResult("malformed", {
+			content: [{ type: "text", text: JSON.stringify({ tabId: 22, active: false }) }],
+		});
+		await transport.connect();
+
+		const error = await handleBrowserTabActivate(transport, request, 22).catch((caught) => caught);
+
+		expect(error).toBeInstanceOf(BrowserTransportError);
+		expect(error.code).toBe("invalid_transport_result");
 	});
 });
 
@@ -127,6 +214,79 @@ describe("browser_screenshot", () => {
 		// 真实扩展此场景下返回错误文本 —— 目前是预期的失败路径
 		expect(result.status).toBe("success");
 		expect(JSON.stringify(result.evidence)).toContain("Only screenshots from surface are allowed");
+	});
+});
+
+describe("session default tab routing", () => {
+	it("preserves tab_not_found when the context target no longer exists", async () => {
+		const transport = connectedMock();
+		const targetContext = createRequestContext({ requestId: "targeted", sessionId: "session-1", tabId: 77 });
+		transport.failures.computer = new BrowserTransportError("tab_not_found", "Tab 77 closed.", false);
+		await transport.connect();
+
+		const error = await handleBrowserScreenshot(transport, targetContext).catch((caught) => caught);
+
+		expect(error).toBeInstanceOf(BrowserTransportError);
+		expect(error.code).toBe("tab_not_found");
+	});
+
+	it("uses context tabId for every tab-scoped read when params omit it", async () => {
+		const transport = connectedMock();
+		const targetContext = createRequestContext({ requestId: "targeted", sessionId: "session-1", tabId: 77 });
+		await transport.connect();
+
+		await handleBrowserPageText(transport, targetContext, { maxChars: 50 });
+		await handleBrowserPageSnapshot(transport, targetContext, { maxChars: 1000 });
+		await handleBrowserScreenshot(transport, targetContext);
+
+		expect(transport.invocations.map((call) => call.arguments)).toEqual([
+			{ tabId: 77 },
+			{ tabId: 77 },
+			{ action: "screenshot", tabId: 77 },
+		]);
+	});
+
+	it("keeps explicit read tabId ahead of the context target", async () => {
+		const transport = connectedMock();
+		const targetContext = createRequestContext({ requestId: "targeted", sessionId: "session-1", tabId: 77 });
+		await transport.connect();
+
+		await handleBrowserPageText(transport, targetContext, { tabId: 88, maxChars: 50 });
+		await handleBrowserPageSnapshot(transport, targetContext, { tabId: 88, maxChars: 1000 });
+		await handleBrowserScreenshot(transport, targetContext, { tabId: 88 });
+
+		expect(transport.invocations.map((call) => call.arguments)).toEqual([
+			{ tabId: 88 },
+			{ tabId: 88 },
+			{ action: "screenshot", tabId: 88 },
+		]);
+	});
+
+	it("uses context tabId for click, fill, and scroll while preserving explicit override", async () => {
+		const transport = new MockBrowserTransport({
+			tools: [
+				{ name: "computer", description: "click/scroll", inputSchema: {}, risk: "write" },
+				{ name: "form_input", description: "fill", inputSchema: {}, risk: "write" },
+			],
+			computerResult: "ok",
+			formInputResult: "ok",
+		});
+		const targetContext = createRequestContext({ requestId: "targeted", sessionId: "session-1", tabId: 77 });
+		const policy = { sessionGranted: true, grantedHosts: [], hasUI: false };
+		const audit = new ActionAudit();
+		await transport.connect();
+
+		await handleElementClick(transport, targetContext, { snapshotId: "snap", ref: "ref_1" }, policy, audit);
+		await handleElementFill(transport, targetContext, { snapshotId: "snap", ref: "ref_2", text: "hello" }, policy, audit);
+		await handleElementScroll(transport, targetContext, { snapshotId: "snap", ref: "ref_3" }, policy, audit);
+		await handleElementClick(transport, targetContext, { snapshotId: "snap", ref: "ref_4", tabId: 88 }, policy, audit);
+
+		expect(transport.invocations.map((call) => (call.arguments as { tabId?: number }).tabId)).toEqual([
+			77,
+			77,
+			77,
+			88,
+		]);
 	});
 });
 

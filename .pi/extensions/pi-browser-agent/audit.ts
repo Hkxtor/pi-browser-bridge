@@ -4,6 +4,7 @@ export interface AuditEntry {
 	action: WriteActionKind;
 	ref: string;
 	snapshotId: string;
+	tabId?: number;
 	decision: PermissionDecision;
 	result: string;
 	valueLength?: number;
