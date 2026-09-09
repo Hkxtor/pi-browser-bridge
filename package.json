@@ -1,0 +1,43 @@
+{
+  "name": "pi-browser-bridge",
+  "version": "0.0.1",
+  "description": "Pi browser bridge: browser_* tools that see and operate your Chrome via an MV3 extension + local WebSocket relay (127.0.0.1:16789).",
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "browser",
+    "chrome",
+    "extension",
+    "cdp"
+  ],
+  "license": "MIT",
+  "author": "Hkxtor",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Hkxtor/pi-browser-bridge.git"
+  },
+  "files": [
+    "manifest.json",
+    "background.js",
+    "popup.html",
+    "popup.js",
+    "content-scripts/",
+    "icons/",
+    "_locales/",
+    "pi-logo.png",
+    "LICENSE",
+    "README.md",
+    "README.en.md",
+    ".pi/extensions/pi-browser-agent/",
+    ".pi/docs/"
+  ],
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "pi": {
+    "extensions": [
+      ".pi/extensions/pi-browser-agent/index.ts"
+    ]
+  }
+}
