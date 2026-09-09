@@ -4,6 +4,8 @@
 [![GitHub release](https://img.shields.io/github/v/release/Hkxtor/pi-browser-bridge?include_prereleases)](https://github.com/Hkxtor/pi-browser-bridge/releases)
 [![Chrome MV3](https://img.shields.io/badge/manifest-V3-blue.svg)](manifest.json)
 
+**English → [README.en.md](README.en.md)**
+
 > 让 [Pi](https://github.com/earendil-works/pi-coding-agent) 编程 Agent 直接「看见并操作」你正在使用的 Chrome 浏览器 —— 通过一枚 MV3 Chrome 扩展 + 一个本地 WebSocket 中继（默认端口 **16789**），Pi 可以读页面、列标签页、生成无障碍树快照、点击元素、填写表单。
 
 本仓库包含两个相互配套的部件：
